@@ -107,7 +107,10 @@ fn search(control_file: PathBuf, seed: PathBuf) -> anyhow::Result<()> {
         }
     }
     for (theirs, offset) in coverage.iter() {
-        println!("{}..{}: {offset}", theirs.start, theirs.end);
+        info!("REUSABLE: {}..{}: {offset}", theirs.start, theirs.end);
+    }
+    for gap in coverage.gaps(&(0..control_file.total_len)) {
+        info!("MISSING: {}..{}", gap.start, gap.end);
     }
 
     Ok(())
