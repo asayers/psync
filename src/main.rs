@@ -21,6 +21,14 @@ enum Cmd {
 }
 
 fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::builder()
+                .with_default_directive(tracing_subscriber::filter::LevelFilter::INFO.into())
+                .from_env_lossy(),
+        )
+        .init();
     match Cmd::parse() {
         Cmd::Search { config, seed } => search(config, seed),
         Cmd::Chunk { path, size } => chunk(path, size),
