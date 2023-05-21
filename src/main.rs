@@ -64,8 +64,9 @@ fn chunk(path: PathBuf, max_size: usize, tar: bool) -> anyhow::Result<()> {
     };
     info!("Writing to {}", outpath.display());
     writeln!(outfile, "# This file was created by psync")?;
-    writeln!(outfile, "# These fields relate to the source file as a whole")?;
+    writeln!(outfile, "# The length of the source file, in bytes")?;
     writeln!(outfile, "Length: {}", mmap.len())?;
+    writeln!(outfile, "# The SHA-256 of the entire source file")?;
     writeln!(
         outfile,
         "SHA-256: {}",
@@ -73,7 +74,12 @@ fn chunk(path: PathBuf, max_size: usize, tar: bool) -> anyhow::Result<()> {
     )?;
     writeln!(
         outfile,
-        "# The rest of this file refers to individual chunks within the source file"
+        "# The number of bytes hashed to generate the start marks"
+    )?;
+    writeln!(outfile, "Window-Size: {}", crate::rollsum::WINDOW_SIZE)?;
+    writeln!(
+        outfile,
+        "# The rest of this file defines chunks within the source file"
     )?;
     writeln!(outfile, "# from\tlength\tstart_mark\tsha-256")?;
     writeln!(outfile, "---")?;

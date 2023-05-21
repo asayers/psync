@@ -1,6 +1,6 @@
 pub mod chunkers;
 mod controlfile;
-mod rollsum;
+pub mod rollsum;
 mod search;
 
 pub use controlfile::*;
