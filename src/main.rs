@@ -149,12 +149,24 @@ fn search(control_file: PathBuf, seed: PathBuf) -> anyhow::Result<()> {
             coverage.insert(their_start..their_start + *length, offset);
         }
     }
-    for (theirs, offset) in coverage.iter() {
-        info!("REUSABLE: {}..{}: {offset}", theirs.start, theirs.end);
-    }
-    for gap in coverage.gaps(&(0..control_file.total_len)) {
-        info!("MISSING: {}..{}", gap.start, gap.end);
-    }
+    let reusable_bytes = coverage
+        .iter()
+        .map(|(range, _)| range.end - range.start)
+        .sum::<usize>();
+    info!(
+        "Able to re-use {} MiB of data from the local copy",
+        reusable_bytes / 1024 / 1024,
+    );
+    let missing_chunks = coverage.gaps(&(0..control_file.total_len)).count();
+    let missing_bytes = coverage
+        .gaps(&(0..control_file.total_len))
+        .map(|gap| gap.end - gap.start)
+        .sum::<usize>();
+    info!(
+        "Need to download {} MiB of missing data in {} chunks",
+        missing_bytes / 1024 / 1024,
+        missing_chunks,
+    );
 
     Ok(())
 }
