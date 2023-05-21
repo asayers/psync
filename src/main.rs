@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use clap::Parser;
 use kdam::{Bar, BarExt};
-use psync::{chunkers::Appearance, *};
+use psync::*;
 use rangemap::RangeMap;
 use sha2::Digest;
 use std::{fs::File, io::Write, path::PathBuf};
@@ -17,10 +17,11 @@ enum Cmd {
     },
     Chunk {
         path: PathBuf,
-        #[clap(long, short, default_value = "65536", group = "chunker")]
-        size: usize,
+        /// Chunks larger than this will be split up
+        #[clap(long, short, default_value = "65536")]
+        max_size: usize,
         /// Treat input as a tarball and chunk on entry boundaries
-        #[clap(long, short, group = "chunker")]
+        #[clap(long, short)]
         tar: bool,
     },
 }
@@ -36,11 +37,15 @@ fn main() -> anyhow::Result<()> {
         .init();
     match Cmd::parse() {
         Cmd::Search { config, seed } => search(config, seed),
-        Cmd::Chunk { path, size, tar } => chunk(path, size, tar),
+        Cmd::Chunk {
+            path,
+            max_size,
+            tar,
+        } => chunk(path, max_size, tar),
     }
 }
 
-fn chunk(path: PathBuf, size: usize, tar: bool) -> anyhow::Result<()> {
+fn chunk(path: PathBuf, max_size: usize, tar: bool) -> anyhow::Result<()> {
     let file = File::open(&path)?;
     let mmap = unsafe { memmap2::Mmap::map(&file)? };
     let outpath = {
@@ -73,12 +78,15 @@ fn chunk(path: PathBuf, size: usize, tar: bool) -> anyhow::Result<()> {
     )?;
     writeln!(outfile, "# from\tlength\tstart_mark\tsha-256")?;
     let mut pb = mk_bar(mmap.len())?;
-    let appearences: Box<dyn Iterator<Item = Appearance>> = if tar {
-        Box::new(chunkers::chunk_tarball(&mmap[..]))
-    } else {
-        Box::new(chunkers::chunk_uniform(&mmap[..], size)?)
-    };
-    for ap in appearences {
+    let mut breakpoints = vec![0, mmap.len()];
+    if tar {
+        breakpoints.extend(chunkers::chunk_tarball(&mmap[..]));
+    }
+    chunkers::split_large_chunks(&mut breakpoints, max_size);
+    breakpoints.sort();
+    breakpoints.dedup();
+    for (from, to) in breakpoints.iter().zip(breakpoints.iter().skip(1)) {
+        let ap = Appearance::new(&mmap[..], *from, to - from);
         writeln!(outfile, "{ap}")?;
         pb.update_to(ap.from);
     }
