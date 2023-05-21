@@ -3,6 +3,7 @@ use clap::Parser;
 use kdam::{Bar, BarExt};
 use psync::*;
 use rangemap::RangeMap;
+use sha2::Digest;
 use std::{fs::File, path::PathBuf};
 use tracing::*;
 
@@ -40,9 +41,15 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn chunk(path: PathBuf, size: usize, tar: bool) -> anyhow::Result<()> {
-    println!("# from\tlength\tstart_mark\tsha-256");
     let file = File::open(path)?;
     let mmap = unsafe { memmap2::Mmap::map(&file)? };
+    println!("# This file was created by psync");
+    println!("# These fields relate to the file as a whole");
+    println!("Length: {}", mmap.len());
+    println!("SHA-256: {}", hex::encode(sha2::Sha256::digest(&mmap[..])));
+    println!("---");
+    println!("# These relate to chunks of the file");
+    println!("# from\tlength\tstart_mark\tsha-256");
     let mut pb = mk_bar(mmap.len())?;
     let chunks: Box<dyn Iterator<Item = (usize, usize, u64, [u8; 32])>> = if tar {
         Box::new(chunkers::chunk_tarball(&mmap[..]))

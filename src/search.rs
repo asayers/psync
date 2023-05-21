@@ -1,4 +1,4 @@
-use crate::{rollsum::*, ChunkHash, ControlFile};
+use crate::{rollsum::*, ControlFile, Sha256Sum};
 use sha2::Digest;
 use std::collections::HashMap;
 use xorf::Filter;
@@ -7,10 +7,10 @@ pub fn search(
     file: &[u8],
     control_file: &ControlFile,
     mut progress_cb: impl FnMut(usize),
-) -> anyhow::Result<HashMap<ChunkHash, usize>> {
+) -> anyhow::Result<HashMap<Sha256Sum, usize>> {
     let filter = control_file.mk_filter()?;
     let mut hasher = RollSum::default();
-    let mut our_appearances = HashMap::<ChunkHash, usize>::default();
+    let mut our_appearances = HashMap::<Sha256Sum, usize>::default();
     for (n_bytes, &x) in file.iter().enumerate() {
         hasher.input(x);
         let hash = hasher.sum();

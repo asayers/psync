@@ -1,9 +1,9 @@
-use crate::{rollsum::*, ChunkHash};
+use crate::{rollsum::*, Sha256Sum};
 use anyhow::ensure;
 use sha2::Digest;
 use tracing::*;
 
-pub type Appearance = (usize, usize, u64, ChunkHash);
+pub type Appearance = (usize, usize, u64, Sha256Sum);
 
 pub fn chunk_uniform(
     file: &[u8],

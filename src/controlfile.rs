@@ -5,24 +5,48 @@ use std::{
     io::{BufRead, BufReader},
     path::Path,
 };
+use tracing::*;
 
-pub type ChunkHash = [u8; 32];
+pub type Sha256Sum = [u8; 32];
 
 pub struct ControlFile {
-    pub chunks: HashMap<u64, Vec<(usize, ChunkHash)>>,
-    pub appearances: HashMap<ChunkHash, (usize, Vec<usize>)>,
+    pub total_len: usize,
+    pub total_sha256: Sha256Sum,
+    pub chunks: HashMap<u64, Vec<(usize, Sha256Sum)>>,
+    pub appearances: HashMap<Sha256Sum, (usize, Vec<usize>)>,
 }
 
 impl ControlFile {
     pub fn read(path: &Path) -> anyhow::Result<ControlFile> {
+        let mut chunks: HashMap<u64, Vec<(usize, Sha256Sum)>> = HashMap::default();
+        let mut appearances: HashMap<Sha256Sum, (usize, Vec<usize>)> = HashMap::default();
+        let mut total_len = None;
+        let mut total_sha256 = None;
+
         let config = BufReader::new(File::open(path)?);
-        let mut chunks: HashMap<u64, Vec<(usize, ChunkHash)>> = HashMap::default();
-        let mut appearances: HashMap<ChunkHash, (usize, Vec<usize>)> = HashMap::default();
-        for l in config.lines() {
-            let l = l?;
-            if l.starts_with('#') {
-                continue;
+        let mut lines = config
+            .lines()
+            .map(|l| l.unwrap())
+            .filter(|l| !l.starts_with('#'));
+        for l in lines.by_ref() {
+            let l = l.trim();
+            if l == "---" {
+                break;
             }
+            match l.split_once(':') {
+                None => warn!("{l}: Expected \"key: value\" pairs"),
+                Some((k, v)) => {
+                    let k = k.trim();
+                    let v = v.trim();
+                    match k {
+                        "Length" => total_len = Some(v.parse()?),
+                        "SHA-256" => total_sha256 = Some(hex::decode(v)?.try_into().unwrap()),
+                        _ => warn!("{k}: Unrecognised header"),
+                    }
+                }
+            }
+        }
+        for l in lines {
             let mut fields = l.split_ascii_whitespace();
             let mut next_field = || fields.next().ok_or_else(|| anyhow!("Not enough fields"));
             let from: usize = next_field()?.parse()?;
@@ -42,6 +66,8 @@ impl ControlFile {
                 .push(from);
         }
         Ok(ControlFile {
+            total_len: total_len.ok_or_else(|| anyhow!("Missing key: Length"))?,
+            total_sha256: total_sha256.ok_or_else(|| anyhow!("Missing key: SHA-256"))?,
             chunks,
             appearances,
         })
