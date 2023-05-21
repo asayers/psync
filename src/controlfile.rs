@@ -10,14 +10,14 @@ pub type ChunkHash = [u8; 32];
 
 pub struct ControlFile {
     pub chunks: HashMap<u64, Vec<(usize, ChunkHash)>>,
-    pub appearances: HashMap<ChunkHash, Vec<usize>>,
+    pub appearances: HashMap<ChunkHash, (usize, Vec<usize>)>,
 }
 
 impl ControlFile {
     pub fn read(path: &Path) -> anyhow::Result<ControlFile> {
         let config = BufReader::new(File::open(path)?);
         let mut chunks: HashMap<u64, Vec<(usize, ChunkHash)>> = HashMap::default();
-        let mut appearances: HashMap<ChunkHash, Vec<usize>> = HashMap::default();
+        let mut appearances: HashMap<ChunkHash, (usize, Vec<usize>)> = HashMap::default();
         for l in config.lines() {
             let l = l?;
             if l.starts_with('#') {
@@ -36,7 +36,10 @@ impl ControlFile {
             ) {
                 chunks.entry(start_mark).or_default().push((length, hash));
             }
-            appearances_entry.or_default().push(from);
+            appearances_entry
+                .or_insert_with(|| (length, vec![]))
+                .1
+                .push(from);
         }
         Ok(ControlFile {
             chunks,
@@ -49,7 +52,7 @@ impl ControlFile {
     }
 
     pub fn n_appearances(&self) -> usize {
-        self.appearances.values().map(|x| x.len()).sum()
+        self.appearances.values().map(|x| x.1.len()).sum()
     }
 
     pub fn mk_filter(&self) -> anyhow::Result<xorf::BinaryFuse32> {

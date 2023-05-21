@@ -2,6 +2,7 @@ use anyhow::anyhow;
 use clap::Parser;
 use kdam::{Bar, BarExt};
 use psync::*;
+use rangemap::RangeMap;
 use std::{fs::File, path::PathBuf};
 use tracing::*;
 
@@ -88,5 +89,19 @@ fn search(control_file: PathBuf, seed: PathBuf) -> anyhow::Result<()> {
         our_appearances.len(),
         control_file.n_chunks(),
     );
+
+    // Maps ranges in their file to ranges in ours
+    let mut coverage = RangeMap::<usize, isize /* offset */>::default();
+    for (hash, our_start) in our_appearances {
+        let (length, their_starts) = &control_file.appearances[&hash];
+        for &their_start in their_starts {
+            let offset = our_start as isize - their_start as isize;
+            coverage.insert(their_start..their_start + *length, offset);
+        }
+    }
+    for (theirs, offset) in coverage.iter() {
+        println!("{}..{}: {offset}", theirs.start, theirs.end);
+    }
+
     Ok(())
 }
