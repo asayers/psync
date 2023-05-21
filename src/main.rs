@@ -64,19 +64,19 @@ fn chunk(path: PathBuf, max_size: usize, tar: bool) -> anyhow::Result<()> {
     };
     info!("Writing to {}", outpath.display());
     writeln!(outfile, "# This file was created by psync")?;
-    writeln!(outfile, "# These fields relate to the file as a whole")?;
+    writeln!(outfile, "# These fields relate to the source file as a whole")?;
     writeln!(outfile, "Length: {}", mmap.len())?;
     writeln!(
         outfile,
         "SHA-256: {}",
         hex::encode(sha2::Sha256::digest(&mmap[..]))
     )?;
-    writeln!(outfile, "---")?;
     writeln!(
         outfile,
-        "# These relate to individual chunks within the file"
+        "# The rest of this file refers to individual chunks within the source file"
     )?;
     writeln!(outfile, "# from\tlength\tstart_mark\tsha-256")?;
+    writeln!(outfile, "---")?;
     let mut pb = mk_bar(mmap.len())?;
     let mut breakpoints = vec![0, mmap.len()];
     if tar {
