@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use clap::Parser;
 use kdam::{Bar, BarExt};
-use psync::*;
+use psync::{chunkers::Appearance, *};
 use rangemap::RangeMap;
 use sha2::Digest;
 use std::{fs::File, io::Write, path::PathBuf};
@@ -67,21 +67,20 @@ fn chunk(path: PathBuf, size: usize, tar: bool) -> anyhow::Result<()> {
         hex::encode(sha2::Sha256::digest(&mmap[..]))
     )?;
     writeln!(outfile, "---")?;
-    writeln!(outfile, "# These relate to individual chunks within the file")?;
+    writeln!(
+        outfile,
+        "# These relate to individual chunks within the file"
+    )?;
     writeln!(outfile, "# from\tlength\tstart_mark\tsha-256")?;
     let mut pb = mk_bar(mmap.len())?;
-    let chunks: Box<dyn Iterator<Item = (usize, usize, u64, [u8; 32])>> = if tar {
+    let appearences: Box<dyn Iterator<Item = Appearance>> = if tar {
         Box::new(chunkers::chunk_tarball(&mmap[..]))
     } else {
         Box::new(chunkers::chunk_uniform(&mmap[..], size)?)
     };
-    for (from, size, start_mark, hash) in chunks {
-        writeln!(
-            outfile,
-            "{from}\t{size}\t{start_mark:x}\t{}",
-            hex::encode(hash)
-        )?;
-        pb.update_to(from);
+    for ap in appearences {
+        writeln!(outfile, "{ap}")?;
+        pb.update_to(ap.from);
     }
     pb.refresh();
     eprintln!();

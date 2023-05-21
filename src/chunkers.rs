@@ -1,9 +1,45 @@
 use crate::{rollsum::*, Sha256Sum};
-use anyhow::ensure;
+use anyhow::{anyhow, ensure};
 use sha2::Digest;
+use std::{fmt, str::FromStr};
 use tracing::*;
 
-pub type Appearance = (usize, usize, u64, Sha256Sum);
+pub struct Appearance {
+    pub from: usize,
+    pub len: usize,
+    pub start_mark: u64,
+    pub hash: Sha256Sum,
+}
+
+impl fmt::Display for Appearance {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Appearance {
+            from,
+            len,
+            start_mark,
+            hash,
+        } = self;
+        write!(f, "{from}\t{len}\t{start_mark:x}\t{}", hex::encode(hash))
+    }
+}
+
+impl FromStr for Appearance {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> anyhow::Result<Self> {
+        let mut fields = s.split_ascii_whitespace();
+        let mut next_field = || fields.next().ok_or_else(|| anyhow!("Not enough fields"));
+        let from: usize = next_field()?.parse()?;
+        let len: usize = next_field()?.parse()?;
+        let start_mark = u64::from_str_radix(next_field()?, 16)?;
+        let hash = hex::decode(next_field()?)?.try_into().unwrap();
+        Ok(Appearance {
+            from,
+            len,
+            start_mark,
+            hash,
+        })
+    }
+}
 
 pub fn chunk_uniform(
     file: &[u8],
@@ -24,33 +60,35 @@ pub fn chunk_uniform(
                 let start_mark = hasher.sum();
                 let to = file.len().min(from + size);
                 let hash = sha2::Sha256::digest(&file[from..to]).try_into().unwrap();
-                return Some((from, size, start_mark, hash));
+                return Some(Appearance {
+                    from,
+                    len: size,
+                    start_mark,
+                    hash,
+                });
             }
         }
         None
     }))
 }
 
-pub fn chunk_specific(file: &[u8], mut from: usize, mut length: usize) -> Appearance {
+pub fn chunk_specific(file: &[u8], mut from: usize, mut len: usize) -> Appearance {
     if from + WINDOW_SIZE >= file.len() {
         from = file.len() - WINDOW_SIZE;
-        length = WINDOW_SIZE;
+        len = WINDOW_SIZE;
         debug!("Chunk is too close to the EOF.  Shifting back to {}", from);
     }
-    if from + length > file.len() {
-        length = file.len() - from;
-        debug!(
-            "Chunk extends beyond EOF, truncating to {} KiB",
-            length / 1024
-        );
+    if from + len > file.len() {
+        len = file.len() - from;
+        debug!("Chunk extends beyond EOF, truncating to {} KiB", len / 1024);
     }
-    if length < WINDOW_SIZE {
+    if len < WINDOW_SIZE {
         debug!(
             "Very small chunk requested: {} KiB.  Expanding to {} KiB",
-            length / 1024,
+            len / 1024,
             WINDOW_SIZE / 1024
         );
-        length = WINDOW_SIZE;
+        len = WINDOW_SIZE;
     }
 
     let mut hasher = RollSum::default();
@@ -58,10 +96,15 @@ pub fn chunk_specific(file: &[u8], mut from: usize, mut length: usize) -> Appear
         hasher.input(x);
     }
     let start_mark = hasher.sum();
-    let hash = sha2::Sha256::digest(&file[from..from + length])
+    let hash = sha2::Sha256::digest(&file[from..from + len])
         .try_into()
         .unwrap();
-    (from, length, start_mark, hash)
+    Appearance {
+        from,
+        len,
+        start_mark,
+        hash,
+    }
 }
 
 pub fn chunk_tarball(file: &[u8]) -> impl Iterator<Item = Appearance> + '_ {

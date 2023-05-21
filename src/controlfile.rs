@@ -1,3 +1,4 @@
+use crate::chunkers::Appearance;
 use anyhow::anyhow;
 use std::{
     collections::HashMap,
@@ -47,23 +48,21 @@ impl ControlFile {
             }
         }
         for l in lines {
-            let mut fields = l.split_ascii_whitespace();
-            let mut next_field = || fields.next().ok_or_else(|| anyhow!("Not enough fields"));
-            let from: usize = next_field()?.parse()?;
-            let length: usize = next_field()?.parse()?;
-            let start_mark = u64::from_str_radix(next_field()?, 16)?;
-            let hash = hex::decode(next_field()?)?.try_into().unwrap();
-            let appearances_entry = appearances.entry(hash);
+            let ap: Appearance = l.parse()?;
+            let appearances_entry = appearances.entry(ap.hash);
             if matches!(
                 appearances_entry,
                 std::collections::hash_map::Entry::Vacant(_)
             ) {
-                chunks.entry(start_mark).or_default().push((length, hash));
+                chunks
+                    .entry(ap.start_mark)
+                    .or_default()
+                    .push((ap.len, ap.hash));
             }
             appearances_entry
-                .or_insert_with(|| (length, vec![]))
+                .or_insert_with(|| (ap.len, vec![]))
                 .1
-                .push(from);
+                .push(ap.from);
         }
         Ok(ControlFile {
             total_len: total_len.ok_or_else(|| anyhow!("Missing key: Length"))?,
