@@ -1,4 +1,4 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use clap::Parser;
 use kdam::{Bar, BarExt};
 use psync::*;
@@ -48,21 +48,17 @@ fn main() -> anyhow::Result<()> {
 fn chunk(path: PathBuf, max_size: usize, tar: bool) -> anyhow::Result<()> {
     let file = File::open(&path)?;
     let mmap = unsafe { memmap2::Mmap::map(&file)? };
-    let outpath = {
-        let mut x = path;
-        x.set_extension("psync");
-        x
-    };
+    let outpath = format!("{}.psync", path.display());
     let mut outfile = match File::options().write(true).create_new(true).open(&outpath) {
         Ok(x) => x,
         Err(_) => {
-            return Err(anyhow!(
-                "Control file at {} already exists.  Please delete it and try again",
-                outpath.display(),
-            ));
+            bail!(
+                "Control file at {outpath} already exists.  Please delete \
+                it and try again"
+            );
         }
     };
-    info!("Writing to {}", outpath.display());
+    info!("Writing to {outpath}");
     writeln!(outfile, "# This file was created by psync")?;
     writeln!(outfile, "# The length of the source file, in bytes")?;
     writeln!(outfile, "Length: {}", mmap.len())?;
@@ -98,6 +94,7 @@ fn chunk(path: PathBuf, max_size: usize, tar: bool) -> anyhow::Result<()> {
     }
     pb.refresh();
     eprintln!();
+    info!("Successfully created {outpath}");
     Ok(())
 }
 
