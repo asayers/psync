@@ -4,7 +4,7 @@ use kdam::{Bar, BarExt};
 use psync::*;
 use rangemap::RangeMap;
 use sha2::Digest;
-use std::{fs::File, path::PathBuf};
+use std::{fs::File, io::Write, path::PathBuf};
 use tracing::*;
 
 #[derive(Parser)]
@@ -41,15 +41,34 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn chunk(path: PathBuf, size: usize, tar: bool) -> anyhow::Result<()> {
-    let file = File::open(path)?;
+    let file = File::open(&path)?;
     let mmap = unsafe { memmap2::Mmap::map(&file)? };
-    println!("# This file was created by psync");
-    println!("# These fields relate to the file as a whole");
-    println!("Length: {}", mmap.len());
-    println!("SHA-256: {}", hex::encode(sha2::Sha256::digest(&mmap[..])));
-    println!("---");
-    println!("# These relate to chunks of the file");
-    println!("# from\tlength\tstart_mark\tsha-256");
+    let outpath = {
+        let mut x = path;
+        x.set_extension("psync");
+        x
+    };
+    let mut outfile = match File::options().write(true).create_new(true).open(&outpath) {
+        Ok(x) => x,
+        Err(_) => {
+            return Err(anyhow!(
+                "Control file at {} already exists.  Please delete it and try again",
+                outpath.display(),
+            ));
+        }
+    };
+    info!("Writing to {}", outpath.display());
+    writeln!(outfile, "# This file was created by psync")?;
+    writeln!(outfile, "# These fields relate to the file as a whole")?;
+    writeln!(outfile, "Length: {}", mmap.len())?;
+    writeln!(
+        outfile,
+        "SHA-256: {}",
+        hex::encode(sha2::Sha256::digest(&mmap[..]))
+    )?;
+    writeln!(outfile, "---")?;
+    writeln!(outfile, "# These relate to individual chunks within the file")?;
+    writeln!(outfile, "# from\tlength\tstart_mark\tsha-256")?;
     let mut pb = mk_bar(mmap.len())?;
     let chunks: Box<dyn Iterator<Item = (usize, usize, u64, [u8; 32])>> = if tar {
         Box::new(chunkers::chunk_tarball(&mmap[..]))
@@ -57,7 +76,11 @@ fn chunk(path: PathBuf, size: usize, tar: bool) -> anyhow::Result<()> {
         Box::new(chunkers::chunk_uniform(&mmap[..], size)?)
     };
     for (from, size, start_mark, hash) in chunks {
-        println!("{from}\t{size}\t{start_mark:x}\t{}", hex::encode(hash));
+        writeln!(
+            outfile,
+            "{from}\t{size}\t{start_mark:x}\t{}",
+            hex::encode(hash)
+        )?;
         pb.update_to(from);
     }
     pb.refresh();
