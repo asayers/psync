@@ -31,8 +31,28 @@ pub fn chunk_uniform(
     }))
 }
 
-pub fn chunk_specific(file: &[u8], from: usize, length: usize) -> anyhow::Result<Appearance> {
-    ensure!(length >= WINDOW_SIZE, "Chunk too short");
+pub fn chunk_specific(file: &[u8], mut from: usize, mut length: usize) -> Appearance {
+    if from + WINDOW_SIZE >= file.len() {
+        from = file.len() - WINDOW_SIZE;
+        length = WINDOW_SIZE;
+        debug!("Chunk is too close to the EOF.  Shifting back to {}", from);
+    }
+    if from + length > file.len() {
+        length = file.len() - from;
+        debug!(
+            "Chunk extends beyond EOF, truncating to {} KiB",
+            length / 1024
+        );
+    }
+    if length < WINDOW_SIZE {
+        debug!(
+            "Very small chunk requested: {} KiB.  Expanding to {} KiB",
+            length / 1024,
+            WINDOW_SIZE / 1024
+        );
+        length = WINDOW_SIZE;
+    }
+
     let mut hasher = RollSum::default();
     for &x in &file[from..from + WINDOW_SIZE] {
         hasher.input(x);
@@ -41,5 +61,5 @@ pub fn chunk_specific(file: &[u8], from: usize, length: usize) -> anyhow::Result
     let hash = sha2::Sha256::digest(&file[from..from + length])
         .try_into()
         .unwrap();
-    Ok((from, length, start_mark, hash))
+    (from, length, start_mark, hash)
 }
