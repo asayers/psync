@@ -10,6 +10,7 @@ hex = "0.4.3"
 kdam = "0.3.0"
 memmap2 = "0.6.1"
 sha2 = "0.10.6"
+tar = "0.4.38"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 xorf = "0.8.1"

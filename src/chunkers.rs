@@ -63,3 +63,23 @@ pub fn chunk_specific(file: &[u8], mut from: usize, mut length: usize) -> Appear
         .unwrap();
     (from, length, start_mark, hash)
 }
+
+pub fn chunk_tarball(file: &[u8]) -> impl Iterator<Item = Appearance> + '_ {
+    let mut offset = 0;
+    info!("file len: {}", file.len());
+    std::iter::from_fn(move || {
+        if offset + 512 >= file.len() {
+            return None;
+        }
+        let hdr = tar::Header::from_byte_slice(&file[offset..offset + 512]);
+        let data_len = hdr.entry_size().ok()? as usize;
+        let path = hdr.path().ok()?;
+        let filename = path.file_name()?.to_str()?;
+        let _g = info_span!("", %filename).entered();
+        let x = ((data_len - 1) / 512) + 1; // round to 512 bytes
+        let entry_len = (x + 1) * 512; // add 512 for the header
+        let chunk = chunk_specific(file, offset, entry_len);
+        offset += entry_len;
+        Some(chunk)
+    })
+}

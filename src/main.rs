@@ -15,8 +15,11 @@ enum Cmd {
     },
     Chunk {
         path: PathBuf,
-        #[clap(long, short, default_value = "65536")]
+        #[clap(long, short, default_value = "65536", group = "chunker")]
         size: usize,
+        /// Treat input as a tarball and chunk on entry boundaries
+        #[clap(long, short, group = "chunker")]
+        tar: bool,
     },
 }
 
@@ -31,16 +34,21 @@ fn main() -> anyhow::Result<()> {
         .init();
     match Cmd::parse() {
         Cmd::Search { config, seed } => search(config, seed),
-        Cmd::Chunk { path, size } => chunk(path, size),
+        Cmd::Chunk { path, size, tar } => chunk(path, size, tar),
     }
 }
 
-fn chunk(path: PathBuf, size: usize) -> anyhow::Result<()> {
+fn chunk(path: PathBuf, size: usize, tar: bool) -> anyhow::Result<()> {
     println!("# from\tlength\tstart_mark\tsha-256");
     let file = File::open(path)?;
     let mmap = unsafe { memmap2::Mmap::map(&file)? };
     let mut pb = mk_bar(mmap.len())?;
-    for (from, size, start_mark, hash) in chunkers::chunk_uniform(&mmap[..], size)? {
+    let chunks: Box<dyn Iterator<Item = (usize, usize, u64, [u8; 32])>> = if tar {
+        Box::new(chunkers::chunk_tarball(&mmap[..]))
+    } else {
+        Box::new(chunkers::chunk_uniform(&mmap[..], size)?)
+    };
+    for (from, size, start_mark, hash) in chunks {
         println!("{from}\t{size}\t{start_mark:x}\t{}", hex::encode(hash));
         pb.update_to(from);
     }
