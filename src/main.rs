@@ -3,7 +3,7 @@ use clap::Parser;
 use kdam::{Bar, BarExt};
 use psync::*;
 use rangemap::RangeMap;
-use sha2::Digest;
+use sha2::{Digest, Sha256};
 use std::{fs::File, io::Write, path::PathBuf};
 use tracing::*;
 
@@ -110,14 +110,24 @@ fn mk_bar(total: usize) -> anyhow::Result<Bar> {
 
 fn search(control_file: PathBuf, seed: PathBuf) -> anyhow::Result<()> {
     let control_file = ControlFile::read(&control_file)?;
-    info!(
+    let file = File::open(seed)?;
+    let mmap = unsafe { memmap2::Mmap::map(&file)? };
+
+    if mmap.len() == control_file.total_len {
+        let our_hash = Sha256::digest(&mmap[..]);
+        if our_hash[..] == control_file.total_sha256[..] {
+            info!("File is up-to-date");
+            return Ok(());
+        }
+    }
+    info!("Upstream file has changes");
+
+    info!("Scanning local file for re-usable chunks");
+    debug!(
         "Searching for {} chunks, appearing in {} positions",
         control_file.n_chunks(),
         control_file.n_appearances(),
     );
-
-    let file = File::open(seed)?;
-    let mmap = unsafe { memmap2::Mmap::map(&file)? };
     let mut pb = mk_bar(mmap.len())?;
     let our_appearances = psync::search(&mmap[..], &control_file, |n| {
         pb.update_to(n);
